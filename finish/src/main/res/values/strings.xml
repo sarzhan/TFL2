@@ -18,4 +18,5 @@
     <string name="app_name">TFL Classify</string>
     <string name="permission_deny_text">Required permissions denied. Exiting.</string>
     <string name="tensorflow_lite_logo_description">TensorFlow Lite logo</string>
+    <string name="box">Box</string>
 </resources>
