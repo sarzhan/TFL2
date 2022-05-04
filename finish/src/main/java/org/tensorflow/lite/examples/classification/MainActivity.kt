@@ -97,8 +97,8 @@ class MainActivity : AppCompatActivity() {
 
         // Request camera permissions
         if (allPermissionsGranted()) {
-//            startCamera()
-            cameraProcess.startCamera(this@MainActivity, ImageAnalyzer(this, viewFinder,rotation, yolov5TFLiteDetector!!, boxLabelCanvas), viewFinder)
+            startCamera()
+//            cameraProcess.startCamera(this@MainActivity, ImageAnalyzer(this, viewFinder,rotation, yolov5TFLiteDetector!!, boxLabelCanvas), viewFinder)
         } else {
             ActivityCompat.requestPermissions(
                 this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS
@@ -250,48 +250,86 @@ class MainActivity : AppCompatActivity() {
             // данные обратно при рендеринге пользовательского интерфейса, чтобы избежать отставания внешнего пользовательского интерфейса.
             Observable.create(ObservableOnSubscribe<Result?> { emitter ->
                 Log.i("image", "previewWidth $previewWidth/$previewHeight")
+                Log.e(
+                    "ImageProxy",
+                    "rotation ${rotation} ,previewHeight ${previewView.height} ,previewWidth ${previewView.width}"
+                )
+
                 val yuvBytes = arrayOfNulls<ByteArray>(3)
                 val planes = image.planes
                 val imageHeight = image.height
-                val imagewWidth = image.width
-                Log.i("image", "imagewWidth$imagewWidth/$imageHeight")
+                val imageWidth = image.width
+
+                Log.e(
+                    "ImageProxy",
+                    "imageHeight ${image.height} ,imageWidth ${image.width} "
+                )
+
                 imageProcess.fillBytes(planes, yuvBytes)
                 val yRowStride = planes[0].rowStride
                 val uvRowStride = planes[1].rowStride
                 val uvPixelStride = planes[1].pixelStride
-                val rgbBytes = IntArray(imageHeight * imagewWidth)
+                val rgbBytes = IntArray(imageHeight * imageWidth)
                 imageProcess.YUV420ToARGB8888(
-                    yuvBytes[0],
-                    yuvBytes[1],
-                    yuvBytes[2],
-                    imagewWidth,
+                    yuvBytes[0]!!,
+                    yuvBytes[1]!!,
+                    yuvBytes[2]!!,
+                    imageWidth,
                     imageHeight,
                     yRowStride,
                     uvRowStride,
                     uvPixelStride,
-                    rgbBytes)
+                    rgbBytes
+                )
 
                 // Исходное изображение
-                val imageBitmap = Bitmap.createBitmap(imagewWidth, imageHeight, Bitmap.Config.ARGB_8888)
-                imageBitmap.setPixels(rgbBytes, 0, imagewWidth, 0, 0, imagewWidth, imageHeight)
+                val imageBitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ARGB_8888)
+                imageBitmap.setPixels(rgbBytes, 0, imageWidth, 0, 0, imageWidth, imageHeight)
+
+                Log.e(
+                    "ImageProxy",
+                    "imageBitmap H ${imageBitmap.height} ,imageBitmap W ${imageBitmap.width} "
+                )
 
                 // Изображение адаптировано к экрану fill_start формат bitmap
                 val scale = Math.max(
-                    previewHeight / (if (rotation % 180 == 0) imagewWidth else imageHeight).toDouble(),
-                    previewWidth / (if (rotation % 180 == 0) imageHeight else imagewWidth).toDouble()
+                    previewHeight / (if (rotation % 180 == 0) imageWidth else imageHeight).toDouble(),
+                    previewWidth / (if (rotation % 180 == 0) imageHeight else imageWidth).toDouble()
+                )
+
+                Log.e(
+                    "ImageProxy",
+                    "scale  ${scale} "
                 )
                 val fullScreenTransform = imageProcess.getTransformationMatrix(
-                    imagewWidth, imageHeight,
-                    (scale * imageHeight).toInt(), (scale * imagewWidth).toInt(),
+                    imageWidth, imageHeight,
+                    (scale * imageHeight).toInt(), (scale * imageWidth).toInt(),
                     if (rotation % 180 == 0) 90 else 0, false
                 )
 
                 // Полноразмерное растровое изображение для предварительного просмотра
-                val fullImageBitmap = Bitmap.createBitmap(imageBitmap, 0, 0, imagewWidth, imageHeight, fullScreenTransform, false)
+                val fullImageBitmap = Bitmap.createBitmap(
+                    imageBitmap,
+                    0,
+                    0,
+                    imageWidth,
+                    imageHeight,
+                    fullScreenTransform,
+                    false
+                )
+                Log.e(
+                    "ImageProxyv",
+                    "fullImageBitmap H ${fullImageBitmap.height} ,fullImageBitmap W ${fullImageBitmap.width} "
+                )
                 // Обрезаем растровое изображение до того же размера, что и предварительный просмотр на экране
                 val cropImageBitmap = Bitmap.createBitmap(
                     fullImageBitmap, 0, 0,
                     previewWidth, previewHeight
+                )
+
+                Log.e(
+                    "ImageProxy",
+                    "cropImageBitmap H ${cropImageBitmap.height} ,cropImageBitmap W ${cropImageBitmap.width} "
                 )
 
                 // Растровое изображение входа модели
@@ -299,26 +337,39 @@ class MainActivity : AppCompatActivity() {
                     cropImageBitmap.width, cropImageBitmap.height,
                     yolov5TFLiteDetector.inputSize.width,
                     yolov5TFLiteDetector.inputSize.height,
-                    0, false)
-                val modelInputBitmap = Bitmap.createBitmap(cropImageBitmap, 0, 0,
+                    0, false
+                )
+                val modelInputBitmap = Bitmap.createBitmap(
+                    cropImageBitmap, 0, 0,
                     cropImageBitmap.width, cropImageBitmap.height,
-                    previewToModelTransform, false)
+                    previewToModelTransform, false
+                )
                 val modelToPreviewTransform = Matrix()
                 previewToModelTransform.invert(modelToPreviewTransform)
+                Log.e(
+                    "ImageProxy",
+                    "modelInputBitmap H ${modelInputBitmap.height} ,cropImageBitmap W ${modelInputBitmap.width} "
+                )
                 val recognitions: ArrayList<org.tensorflow.lite.examples.classification.util.Recognition>? = yolov5TFLiteDetector.detect(modelInputBitmap)
                 val emptyCropSizeBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Bitmap.Config.ARGB_8888)
+                Log.e(
+                    "ImageProxy",
+                    "emptyCropSizeBitmap H ${emptyCropSizeBitmap.height} ,cropImageBitmap W ${emptyCropSizeBitmap.width} "
+                )
                 val cropCanvas = Canvas(emptyCropSizeBitmap)
+                Log.e("image", "brands ${recognitions}")
                 // Пограничная кисть
                 val boxPaint = Paint()
                 boxPaint.strokeWidth = 5f
                 boxPaint.style = Paint.Style.STROKE
-                boxPaint.color = Color.RED
+                boxPaint.color = Color.GREEN
                 // Кисть шрифта
                 val textPain = Paint()
                 textPain.textSize = 50f
                 textPain.color = Color.RED
                 textPain.style = Paint.Style.FILL
                 for (res in recognitions!!) {
+
                     val location: RectF = res.getLocation()
                     val label: String = res.getLabelName()
                     val confidence: Float = res.getConfidence()
